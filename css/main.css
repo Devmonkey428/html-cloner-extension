@@ -1,0 +1,110 @@
+body {
+    font-family: Arial, sans-serif;
+    width: 400px;
+    margin: 0;
+}
+.wrapper {
+    padding: 20px;
+}
+#urlList {
+    max-height: 300px;
+    overflow-y: auto;
+    margin-bottom: 10px;
+    border: 1px solid #ccc;
+    padding: 15px 5px;
+    border-radius: 10px;
+}
+.mainBtns {
+    display: flex;
+    justify-content: space-around;
+}
+.mainBtns button {
+    background-color: #4f46e5;
+    color: #fff;
+    border-radius: 10px;
+    border: none;
+    margin: 0;
+    padding: 12px 15px;
+}
+.url-item {
+    margin-bottom: 5px;
+}
+
+.url-link {
+    word-break: break-all;
+    color: #1a0dab;
+    text-decoration: none;
+}
+
+.url-link:hover {
+    text-decoration: underline;
+}
+
+button {
+    margin: 5px 0;
+    padding: 5px 10px;
+    font-size: 14px;
+}
+button:hover {
+    opacity: 0.85;
+}
+
+#progressContainer {
+    display: none;
+    margin-top: 10px;
+}
+
+#progressBar {
+    width: 100%;
+    background-color: #f3f3f3;
+    border: 1px solid #ccc;
+    height: 20px;
+    position: relative;
+}
+
+#progressBar div {
+    height: 100%;
+    width: 0%;
+    background-color: #4caf50;
+    transition: width 0.3s;
+}
+
+#progressPercent {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 12px;
+    line-height: 20px;
+    color: #fff;
+}
+
+#manualDownloadSection {
+    margin-top: 15px;
+}
+
+.manualDownloadSectionContainer {
+    display: flex;
+}
+.manualDownloadSectionContainer input {
+    border: 1px solid #4f46e5;
+    border-radius: 10px 0 0 10px;
+    padding: 0 5px;
+}
+.manualDownloadSectionContainer input:active {
+    border: 1px solid #3730a3;
+}
+.manualDownloadSectionContainer button {
+    background-color: #4f46e5;
+    color: #fff;
+    border-radius: 0 10px 10px 0;
+    border: none;
+    margin: 0;
+    padding: 12px 15px;
+}
+#manualUrl {
+    width: 100%;
+    padding: 5px;
+    font-size: 14px;
+    box-sizing: border-box;
+}

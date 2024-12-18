@@ -1,0 +1,33 @@
+<!-- popup.html -->
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Html5 Game Cloner</title>
+  <link rel="stylesheet" href="./css/main.css">
+</head>
+<body>
+  <div class="wrapper">
+    <h2>Html5 Game Cloner</h2>
+    <div id="urlList">Loading...</div>
+    <div class="mainBtns">
+      <button id="clearButton">Clear All URLs</button>
+      <button id="downloadButton">Download All</button>
+    </div>
+  
+    <div id="manualDownloadSection">
+      <h3>Manual Download</h3>
+      <div class="manualDownloadSectionContainer">
+        <input type="text" id="manualUrl" placeholder="Enter file URL here">
+        <button id="manualDownloadButton">Download</button>
+      </div>
+    </div>
+  
+    <div id="progressContainer">
+      <p>Downloading... <span id="progressPercent">0%</span></p>
+      <div id="progressBar"><div></div></div>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
