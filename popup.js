@@ -1,169 +1,190 @@
 // popup.js
 
-document.addEventListener('DOMContentLoaded', function() {
-  const urlListDiv = document.getElementById('urlList');
-  const clearButton = document.getElementById('clearButton');
-  const downloadButton = document.getElementById('downloadButton');
-  const manualDownloadButton = document.getElementById('manualDownloadButton');
-  const manualUrlInput = document.getElementById('manualUrl');
+document.addEventListener('DOMContentLoaded', () => {
+  const actionButton = document.getElementById('actionButton');
   const progressContainer = document.getElementById('progressContainer');
-  const progressBar = document.getElementById('progressBar').firstElementChild;
-  const progressPercent = document.getElementById('progressPercent');
+  const downloadProgress = document.getElementById('downloadProgress');
+  const progressText = document.getElementById('progressText');
+  const manualUrlInput = document.getElementById('manualUrl');
+  const manualDownloadButton = document.getElementById('manualDownloadButton');
 
-  let currentTabId = null;
+  let currentState = 'start'; // Possible states: start, stopDetecting, download, stopDownloading
+  let requests = [];
+  let isDownloading = false;
 
-  // Get the active tab ID
-  function getActiveTab(callback) {
-    chrome.tabs.query({ active: true, currentWindow: true }, function(tabs) {
-      if (tabs.length === 0) {
-        callback(null);
-        return;
+  // Initialize the UI based on stored state
+  initializeUI();
+
+  actionButton.addEventListener('click', async () => {
+      if (currentState === 'start') {
+          await startDetecting();
+      } else if (currentState === 'stopDetecting') {
+          await stopDetecting();
+      } else if (currentState === 'download') {
+          await initiateDownload();
+      } else if (currentState === 'stopDownloading') {
+          await stopDownloading();
       }
-      callback(tabs[0].id);
-    });
-  }
+  });
 
-  // Load URLs for the active tab and display them
-  function loadUrls() {
-    getActiveTab(function(tabId) {
-      if (tabId === null) {
-        urlListDiv.innerHTML = 'No active tab.';
-        return;
-      }
-      currentTabId = tabId;
-      chrome.runtime.sendMessage({ type: "get_urls", tabId: tabId }, function(response) {
-        const urls = response.urls;
-        if (urls.length === 0) {
-          urlListDiv.innerHTML = 'No URLs detected.';
+  manualDownloadButton.addEventListener('click', async () => {
+      const url = manualUrlInput.value.trim();
+      if (url === '') {
+          alert('Please enter a valid URL.');
           return;
-        }
-        urlListDiv.innerHTML = '';
-        urls.forEach(function(url) {
-          addUrlToList(url);
-        });
+      }
+
+      // Send message to background to start manual download
+      chrome.runtime.sendMessage({ action: 'manualDownload', url }, (response) => {
+          if (response.status === 'manual_download_started') {
+              alert(`Manual download started for: ${response.url}`);
+              manualUrlInput.value = '';
+          } else if (response.status === 'invalid_url') {
+              alert('Invalid URL. Please enter a valid URL.');
+          }
       });
-    });
-  }
-
-  // Add a single URL to the list
-  function addUrlToList(url) {
-    const div = document.createElement('div');
-    div.className = 'url-item';
-    const link = document.createElement('a');
-    link.href = url;
-    link.textContent = url;
-    link.target = '_blank';
-    link.className = 'url-link';
-    div.appendChild(link);
-    urlListDiv.appendChild(div);
-  }
-
-  loadUrls();
-
-  // Listen for new URLs and download progress from background
-  chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
-    if (request.type === "new_url" && request.tabId === currentTabId) {
-      addUrlToList(request.url);
-    } else if (request.type === "download_progress") {
-      updateProgressBar(request.downloadState);
-    }
   });
 
-  // Clear all URLs for the active tab
-  clearButton.addEventListener('click', function() {
-    if (currentTabId === null) {
-      alert('No active tab.');
-      return;
-    }
-    chrome.runtime.sendMessage({ type: "clear_urls", tabId: currentTabId }, function(response) {
-      if (response && response.success) {
-        urlListDiv.innerHTML = 'No URLs detected.';
-        resetProgressBar(); // Reset the progress bar
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+      if (message.action === 'downloadProgress') {
+          showProgress(message.downloadedCount, message.totalFiles);
+      } else if (message.action === 'downloadComplete') {
+          resetUI();
       }
-    });
   });
 
-  // Download all URLs for the active tab
-  downloadButton.addEventListener('click', function() {
-    if (currentTabId === null) {
-      alert('No active tab.');
-      return;
-    }
-    chrome.runtime.sendMessage({ type: "get_urls", tabId: currentTabId }, function(response) {
-      const urls = response.urls;
-      if (urls.length === 0) {
-        alert('No URLs to download.');
-        return;
+  async function initializeUI() {
+      // Get current state from background
+      chrome.runtime.sendMessage({ action: 'getState' }, (response) => {
+          if (response.isDetecting) {
+              currentState = 'stopDetecting';
+              actionButton.textContent = 'Stop Detecting';
+          } else if (response.isDownloading) {
+              currentState = 'stopDownloading';
+              actionButton.textContent = 'Stop Downloading';
+              showProgress(response.downloadedCount, response.totalFiles);
+          } else {
+              // Check if there are requests ready for download
+              chrome.runtime.sendMessage({ action: 'getRequests' }, (resp) => {
+                  if (resp.requests && resp.requests.length > 0) {
+                      currentState = 'download';
+                      actionButton.textContent = 'Download';
+                  } else {
+                      currentState = 'start';
+                      actionButton.textContent = 'Start Detecting';
+                  }
+              });
+          }
+      });
+
+      // Listen for download progress updates
+      chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+          if (message.action === 'downloadProgress') {
+              showProgress(message.downloadedCount, message.totalFiles);
+          } else if (message.action === 'downloadComplete') {
+              resetUI();
+          }
+      });
+  }
+
+  async function startDetecting() {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tab) {
+          alert('No active tab found.');
+          return;
       }
-      initiateDownload(urls);
-    });
-  });
 
-  // Manual download of a specific URL
-  manualDownloadButton.addEventListener('click', function() {
-    const url = manualUrlInput.value.trim();
-    if (url === '') {
-      alert('Please enter a URL.');
-      return;
-    }
-    initiateDownload([url]);
-    manualUrlInput.value = '';
-  });
+      // Clear caches by reloading the page without cache
+      chrome.tabs.reload(tab.id, { bypassCache: true }, () => {
+          // Send message to background to start detecting
+          chrome.runtime.sendMessage({ action: 'startDetecting', tabId: tab.id }, (response) => {
+              if (response.status === 'detecting') {
+                  currentState = 'stopDetecting';
+                  actionButton.textContent = 'Stop Detecting';
+              } else if (response.status === 'already_detecting') {
+                  alert('Already detecting requests.');
+              }
+          });
+      });
+  }
 
-  // Function to initiate downloads
-  function initiateDownload(urls) {
-    chrome.runtime.sendMessage({ type: "initiate_download", urls: urls }, function(response) {
-      if (response && response.success) {
-        showProgressBar();
+  async function stopDetecting() {
+      chrome.runtime.sendMessage({ action: 'stopDetecting' }, (response) => {
+          if (response.status === 'stopped') {
+              currentState = 'download';
+              actionButton.textContent = 'Download';
+              fetchRequests();
+          } else if (response.status === 'not_detecting') {
+              alert('Detection was not active.');
+          }
+      });
+  }
+
+  function fetchRequests() {
+      chrome.runtime.sendMessage({ action: 'getRequests' }, (response) => {
+          requests = response.requests;
+          console.log(`Detected ${requests.length} unique requests.`);
+          if (requests.length === 0) {
+              alert('No files detected to download.');
+              currentState = 'start';
+              actionButton.textContent = 'Start Detecting';
+          }
+      });
+  }
+
+  async function initiateDownload() {
+      if (requests.length === 0) {
+          alert('No files detected to download.');
+          currentState = 'start';
+          actionButton.textContent = 'Start Detecting';
+          return;
       }
-    });
+
+      const confirmDownload = confirm(`You are about to download ${requests.length} files. Continue?`);
+      if (!confirmDownload) return;
+
+      // Send message to background to start download
+      chrome.runtime.sendMessage({ action: 'startDownload' }, (response) => {
+          if (response.status === 'download_started') {
+              currentState = 'stopDownloading';
+              actionButton.textContent = 'Stop Downloading';
+              showProgress(0, requests.length);
+          } else {
+              alert('Download could not be started.');
+          }
+      });
   }
 
-  // Show the progress bar
-  function showProgressBar() {
-    progressContainer.style.display = 'block';
-    progressBar.style.width = '0%';
-    progressPercent.textContent = '0%';
+  async function stopDownloading() {
+      // Send message to background to stop download
+      chrome.runtime.sendMessage({ action: 'stopDownload' }, (response) => {
+          if (response.status === 'download_stopped') {
+              currentState = 'start';
+              actionButton.textContent = 'Start Detecting';
+              hideProgress();
+          } else {
+              alert('Download is not active.');
+          }
+      });
   }
 
-  // Reset and hide the progress bar
-  function resetProgressBar() {
-    progressContainer.style.display = 'none';
-    progressBar.style.width = '0%';
-    progressPercent.textContent = '0%';
+  function showProgress(downloaded, total) {
+      progressContainer.classList.remove('hidden');
+      const percent = total > 0 ? Math.floor((downloaded / total) * 100) : 0;
+      downloadProgress.value = percent;
+      progressText.textContent = `${percent}% (${downloaded}/${total})`;
   }
 
-  // Update the progress bar based on downloadState
-  function updateProgressBar(downloadState) {
-    if (downloadState.total === 0) {
-      // No active downloads
-      resetProgressBar();
-      return;
-    }
-    const percent = downloadState.total > 0 ? Math.round((downloadState.completed / downloadState.total) * 100) : 0;
-    progressBar.style.width = percent + '%';
-    progressPercent.textContent = percent + '%';
-    if (downloadState.completed === downloadState.total) {
-      // All downloads completed
-      setTimeout(function() {
-        resetProgressBar();
-        loadUrls();
-      }, 1000);
-    }
+  function hideProgress() {
+      progressContainer.classList.add('hidden');
+      downloadProgress.value = 0;
+      progressText.textContent = '0% (0/0)';
   }
 
-  // Fetch and display current download progress when popup is opened
-  function fetchDownloadProgress() {
-    chrome.runtime.sendMessage({ type: "get_download_progress" }, function(response) {
-      const downloadState = response.downloadState;
-      if (downloadState.total > 0) {
-        showProgressBar();
-        updateProgressBar(downloadState);
-      } else {
-        resetProgressBar();
-      }
-    });
+  function resetUI() {
+      currentState = 'start';
+      actionButton.textContent = 'Start Detecting';
+      hideProgress();
+      chrome.runtime.sendMessage({ action: 'clearRequests' }, () => { });
   }
-
-  fetchDownloadProgress();
 });
